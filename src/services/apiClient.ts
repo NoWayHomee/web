@@ -1,33 +1,41 @@
+// src/services/apiClient.ts
 import axios from 'axios';
-import { useAuthStore } from '../store/useAuthStore';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  // Đảm bảo URL này khớp với cổng NestJS đang chạy (mặc định 3000)
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request Interceptor: Tự động gắn token
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = useAuthStore.getState().token;
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Interceptor gắn JWT Token vào Header trước khi gửi
+apiClient.interceptors.request.use((config) => {
+  // Lấy token từ localStorage (hoặc Zustand store)
+  const token = localStorage.getItem('access_token');
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
-// Response Interceptor: Xử lý lỗi global (VD: 401 Unauthorized)
+// Interceptor Xử lý Lỗi từ NestJS
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Trả về thẳng data để UI dễ dùng
+    return response.data;
+  },
   (error) => {
-    if (error.response?.status === 401) {
-      // Ép đăng xuất nếu token hết hạn hoặc không hợp lệ
-      useAuthStore.getState().logout();
-      window.location.href = '/login'; 
+    // NestJS thường ném lỗi theo format: { statusCode, message, error }
+    const res = error.response;
+    if (res && res.data) {
+      // Ép kiểu lỗi NestJS về một câu thông báo dễ hiểu cho UI
+      const errorMessage = Array.isArray(res.data.message) 
+        ? res.data.message[0] // NestJS Validation Array
+        : res.data.message || 'Lỗi hệ thống từ Backend';
+        
+      console.error("API Error:", errorMessage);
+      return Promise.reject(new Error(errorMessage));
     }
     return Promise.reject(error);
   }
