@@ -1,34 +1,23 @@
 {
-  "name": "web",
+  "name": "nowayhome-web",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/admin",
+    "apps/customer",
+    "apps/partner",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@tanstack/react-query": "^5.96.2",
-    "axios": "^1.14.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-router-dom": "^7.14.0",
-    "zustand": "^5.0.12"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.39.4",
-    "@types/node": "^24.12.2",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "eslint": "^9.39.4",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.4.0",
-    "typescript": "~6.0.2",
-    "typescript-eslint": "^8.58.0",
-    "vite": "^8.0.4"
+    "dev:admin": "npm --workspace apps/admin run dev",
+    "dev:customer": "npm --workspace apps/customer run dev",
+    "dev:partner": "npm --workspace apps/partner run dev",
+    "typecheck": "npm run typecheck:admin && npm run typecheck:partner && npm run typecheck:customer",
+    "typecheck:admin": "tsc -p apps/admin/tsconfig.json --noEmit",
+    "typecheck:customer": "tsc -p apps/customer/tsconfig.json --noEmit",
+    "typecheck:partner": "tsc -p apps/partner/tsconfig.json --noEmit",
+    "build:admin": "npm --workspace apps/admin run build",
+    "build:customer": "npm --workspace apps/customer run build",
+    "build:partner": "npm --workspace apps/partner run build"
   }
 }
