@@ -1,12 +1,22 @@
 import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchPartners, approvePartner, deletePartner, rejectPartner } from "../../../../api/partnersApi";
-import { Partner } from "@/shared/types";
+import { fetchPartners, approvePartner, deletePartner, rejectPartner, lockPartner, unlockPartner, revokePartner } from "../../../../api/partnersApi";import { Partner } from "@/shared/types";
 import { PartnerEditModal } from "../modals/PartnerEditModal";
 import { PartnerHotelRoomsModal } from "../modals/PartnerHotelRoomsModal";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, Button, Badge, cn } from "../../../../shared/components/ui";
-import { Search, ChevronUp, ChevronDown, Trash2, Edit, ExternalLink, Check, XCircle } from "lucide-react";
+import { Search, ChevronUp, ChevronDown, Trash2, Edit, ExternalLink, Check, XCircle, Lock, Unlock, UserMinus } from "lucide-react";import { useConfirmDialog } from "../../../../shared/components/ConfirmDialog";
+
+function removePartnerFromCache(oldData: any, deletedId: number) {
+  if (Array.isArray(oldData)) return oldData.filter((partner: Partner) => partner.id !== deletedId);
+  if (oldData?.partners) {
+    return {
+      ...oldData,
+      partners: oldData.partners.filter((partner: Partner) => partner.id !== deletedId),
+    };
+  }
+  return oldData;
+}
 
 export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: string }) {
   const { state: locState } = useLocation();
@@ -14,16 +24,15 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
   const [filter, setFilter] = useState(initialFilter);
   const [targetId, setTargetId] = useState<number | null>(null);
   const [shouldHighlight, setShouldHighlight] = useState(false);
-
-
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [sortConfig, setSortConfig] = useState<{ key: string, direction: "asc" | "desc" } | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const itemsPerPage = 10;
   const [reject, setReject] = useState<{ id: number; reason: string } | null>(null);
   const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [mounted, setMounted] = useState(false);
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     setMounted(true);
@@ -40,7 +49,7 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
     }
     if (locState?.targetId) {
       setTargetId(locState.targetId);
-      const targetPartner = data?.partners?.find((p: any) => p.id === locState.targetId);
+      const targetPartner = data?.partners?.find((partner: any) => partner.id === locState.targetId);
       if (targetPartner) {
         setEditingPartner(targetPartner);
       }
@@ -56,8 +65,6 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
     }
   }, [locState, data]);
 
-  // If fetchPartners returns result.partners directly, then data is the array.
-  // We handle both cases for safety.
   const list = Array.isArray(data) ? data : (data as any)?.partners || [];
 
   const approveMutation = useMutation({
@@ -65,8 +72,26 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partners"] }),
   });
 
+  const lockMutation = useMutation({
+    mutationFn: (id: number) => lockPartner(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partners"] }),
+  });
+
+  const unlockMutation = useMutation({
+    mutationFn: (id: number) => unlockPartner(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partners"] }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deletePartner(id),
+    onSuccess: (_result, deletedId) => {
+      queryClient.setQueriesData({ queryKey: ["partners"] }, (oldData: any) => removePartnerFromCache(oldData, deletedId));
+      queryClient.invalidateQueries({ queryKey: ["partners"] });
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: number) => revokePartner(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partners"] }),
   });
 
@@ -74,7 +99,7 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
     let result = [...list];
     if (search) {
       const q = search.toLowerCase();
-      result = result.filter(p => p.email.toLowerCase().includes(q) || p.fullName.toLowerCase().includes(q));
+      result = result.filter((partner) => partner.email.toLowerCase().includes(q) || partner.fullName.toLowerCase().includes(q));
     }
     if (sortConfig) {
       result.sort((a, b) => {
@@ -82,8 +107,8 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
         let bVal = b[sortConfig.key as keyof Partner];
         if (aVal == null) aVal = "";
         if (bVal == null) bVal = "";
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
         return 0;
       });
     }
@@ -93,7 +118,7 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
   const currentItems = filteredList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   const requestSort = (key: string) => {
-    setSortConfig(prev => {
+    setSortConfig((prev) => {
       if (prev?.key === key) {
         return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
       }
@@ -116,12 +141,12 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
         <PartnerFilter filter={filter} setFilter={setFilter} />
-        <form onSubmit={e => { e.preventDefault(); e.currentTarget.querySelector('input')?.blur(); }} className="relative w-full sm:w-72">
+        <form onSubmit={(e) => { e.preventDefault(); e.currentTarget.querySelector("input")?.blur(); }} className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
           <input
             placeholder="Tìm theo tên hoặc email..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm bg-card focus:ring-2 focus:ring-primary/20 outline-none transition-all"
           />
         </form>
@@ -135,7 +160,7 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
 
       <Card className={cn(
         "overflow-hidden shadow-sm border-none transition-all duration-500",
-        shouldHighlight && !targetId && "animate-highlight-pulse ring-2 ring-primary/20"
+        shouldHighlight && !targetId && "animate-highlight-pulse ring-2 ring-primary/20",
       )}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -152,7 +177,7 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
             </thead>
             <tbody className="divide-y">
               {isLoading ? (
-                [1001, 1002, 1003, 1004, 1005].map(id => (
+                [1001, 1002, 1003, 1004, 1005].map((id) => (
                   <tr key={id} className="animate-pulse">
                     <td colSpan={7} className="p-4"><div className="h-4 bg-zinc-100 rounded w-full" /></td>
                   </tr>
@@ -170,13 +195,45 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
                     mounted={mounted}
                     onApprove={() => approveMutation.mutate(partner.id)}
                     onReject={() => setReject({ id: partner.id, reason: "" })}
+                    onRevoke={async () => {
+                      const ok = await confirm({
+                        title: "Hủy quyền đối tác",
+                        message: `Tài khoản "${partner.fullName}" sẽ bị thu hồi quyền đối tác và hạ về customer. Tài khoản vẫn còn tồn tại.`,
+                        confirmText: "Hủy quyền",
+                        tone: "danger",
+                      });
+                      if (ok) revokeMutation.mutate(partner.id);
+                    }}
                     onEdit={() => setEditingPartner(partner)}
-                    onDelete={() => {
-                      if (confirm(`Xóa đối tác "${partner.fullName}"?`)) deleteMutation.mutate(partner.id);
+                    onLock={async () => {
+                      const ok = await confirm({
+                        title: "Khóa tài khoản đối tác",
+                        message: `Đối tác "${partner.fullName}" sẽ bị khóa và không thể đăng nhập vào hệ thống.`,
+                        confirmText: "Khóa",
+                        tone: "danger",
+                      });
+                      if (ok) lockMutation.mutate(partner.id);
+                    }}
+                    onUnlock={async () => {
+                      const ok = await confirm({
+                        title: "Mở khóa tài khoản đối tác",
+                        message: `Đối tác "${partner.fullName}" sẽ được mở khóa và có thể đăng nhập trở lại.`,
+                        confirmText: "Mở khóa",
+                        tone: "default",
+                      });
+                      if (ok) unlockMutation.mutate(partner.id);
+                    }}
+                    onDelete={async () => {
+                      const ok = await confirm({
+                        title: "Xóa tài khoản vĩnh viễn",
+                        message: `Tài khoản "${partner.fullName}" sẽ bị XÓA HOÀN TOÀN khỏi hệ thống và không thể khôi phục.`,
+                        confirmText: "Xóa vĩnh viễn",
+                        tone: "danger",
+                      });
+                      if (ok) deleteMutation.mutate(partner.id);
                     }}
                     onViewRooms={() => setSelectedPartner(partner)}
-                    isProcessing={approveMutation.isPending}
-                  />
+                    isProcessing={approveMutation.isPending || lockMutation.isPending || unlockMutation.isPending || revokeMutation.isPending}                  />
                 ))
               )}
             </tbody>
@@ -187,12 +244,12 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
       <div className="flex justify-between items-center text-xs text-muted-foreground px-2">
         <span>Hiển thị {currentItems.length} trên {filteredList.length} đối tác</span>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Trước</Button>
-          <Button variant="outline" size="sm" disabled={page * itemsPerPage >= filteredList.length} onClick={() => setPage(p => p + 1)}>Sau</Button>
+          <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Trước</Button>
+          <Button variant="outline" size="sm" disabled={page * itemsPerPage >= filteredList.length} onClick={() => setPage((p) => p + 1)}>Sau</Button>
         </div>
       </div>
 
-      {reject && <RejectModal reason={reject.reason} setReason={(v: string) => setReject(p => p ? { ...p, reason: v } : null)} onCancel={() => setReject(null)} onConfirm={doReject} />}
+      {reject && <RejectModal reason={reject.reason} setReason={(v: string) => setReject((p) => p ? { ...p, reason: v } : null)} onCancel={() => setReject(null)} onConfirm={doReject} />}
 
       {editingPartner && (
         <PartnerEditModal
@@ -202,11 +259,10 @@ export function PartnersTab({ initialFilter = "pending" }: { initialFilter?: str
         />
       )}
       {selectedPartner && <PartnerHotelRoomsModal partner={selectedPartner} onClose={() => setSelectedPartner(null)} />}
+      {confirmDialog}
     </div>
   );
 }
-
-// Sub-components
 
 function SortableHeader({ label, columnKey, sortConfig, onSort }: any) {
   return (
@@ -227,15 +283,21 @@ function SortableHeader({ label, columnKey, sortConfig, onSort }: any) {
 
 function PartnerFilter({ filter, setFilter }: any) {
   return (
-    <div className="flex bg-muted p-1 rounded-lg">
-      {[["pending", "Chờ duyệt"], ["approved", "Đã duyệt"], ["rejected", "Từ chối"]].map(([key, label]) => (
+    <div className="flex flex-wrap bg-muted p-1 rounded-lg gap-1">
+      {[
+        ["pending", "Chờ duyệt"],
+        ["approved", "Đã duyệt"],
+        ["rejected", "Từ chối"],
+        ["suspended", "Đã khóa"],
+      ].map(([key, label]) => (
         <button
           key={key}
           type="button"
           onClick={() => setFilter(key)}
           className={cn(
             "px-4 py-1.5 rounded-md text-sm font-semibold transition-all",
-            filter === key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+            filter === key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+            key === "suspended" && filter === key && "text-rose-600",
           )}
         >
           {label}
@@ -245,10 +307,23 @@ function PartnerFilter({ filter, setFilter }: any) {
   );
 }
 
-function PartnerRow({ partner, isTarget, mounted, onApprove, onReject, onEdit, onDelete, onViewRooms, isProcessing }: any) {
-  return (
-    <tr className={cn("transition-all duration-500", isTarget ? "animate-highlight-pulse bg-primary/10" : "hover:bg-accent/30")}>
-      <td className="px-4 py-3 font-semibold text-zinc-800">{partner.email}</td>
+function PartnerRow({ partner, isTarget, mounted, onApprove, onReject, onRevoke, onEdit, onDelete, onLock, onUnlock, onViewRooms, isProcessing }: any) {
+  const isLocked = partner.userStatus === "suspended";  return (
+    <tr className={cn(
+      "transition-all duration-500",
+      isTarget ? "animate-highlight-pulse bg-primary/10" : "hover:bg-accent/30",
+      isLocked && "opacity-60",
+    )}>
+      <td className="px-4 py-3 font-semibold text-zinc-800">
+        <div className="flex flex-col gap-0.5">
+          <span>{partner.email}</span>
+          {isLocked && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-500">
+              <Lock size={9} /> Đã khóa
+            </span>
+          )}
+        </div>
+      </td>
       <td className="px-4 py-3 text-zinc-700 font-medium">{partner.fullName}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
@@ -261,33 +336,66 @@ function PartnerRow({ partner, isTarget, mounted, onApprove, onReject, onEdit, o
       <td className="px-4 py-3 text-muted-foreground font-medium">{partner.phone || "-"}</td>
       <td className="px-4 py-3 text-muted-foreground font-medium">{mounted ? new Date(partner.createdAt).toLocaleDateString("vi-VN") : "-"}</td>
       <td className="px-4 py-3">
-        {partner.status === "pending" ? (
-          <Badge variant="secondary">Đang chờ</Badge>
-        ) : partner.status === "approved" ? (
-          <Badge variant="success">Đã duyệt</Badge>
-        ) : (
-          <Badge variant="destructive" title={partner.rejectReason || ""}>Từ chối</Badge>
-        )}
+        <div className="flex flex-col gap-1">
+          {partner.status === "pending" ? (
+            <Badge variant="secondary">Chờ duyệt</Badge>
+          ) : partner.status === "approved" ? (
+            <Badge variant="success">Đã duyệt</Badge>
+          ) : (
+            <Badge variant="destructive" title={partner.rejectReason || ""}>Từ chối</Badge>
+          )}
+          {isLocked && <Badge variant="destructive" className="text-[10px] py-0">Bị khóa</Badge>}
+        </div>
       </td>
       <td className="px-4 py-3 text-right">
         <div className="flex justify-end gap-1">
-          {partner.status === "pending" && (
+          {partner.status === "pending" && !isLocked && (
             <>
-              <Button variant="ghost" size="icon" className="size-8 text-emerald-600 hover:bg-emerald-50" onClick={onApprove} disabled={isProcessing}>
+              <Button variant="ghost" size="icon" className="size-8 text-emerald-600 hover:bg-emerald-50" title="Duyệt đơn" onClick={onApprove} disabled={isProcessing}>
                 <Check className="size-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="size-8 text-destructive hover:bg-destructive/10" onClick={onReject}>
-                <XCircle className="size-4" />
+              <Button variant="ghost" size="icon" className="size-8 text-orange-500 hover:bg-orange-50" title="Từ chối đơn KYC" onClick={onReject} disabled={isProcessing}>                <XCircle className="size-4" />
               </Button>
             </>
           )}
-          <Button variant="ghost" size="icon" className="size-8 text-zinc-600" onClick={onEdit}>
+          {/* Approved: Hủy quyền đối tác (hạ về customer, không xóa TK) */}
+          {partner.status === "approved" && !isLocked && (
+            <Button variant="ghost" size="icon" className="size-8 text-amber-600 hover:bg-amber-50" title="Hủy quyền đối tác" onClick={onRevoke} disabled={isProcessing}>
+              <UserMinus className="size-4" />
+            </Button>
+          )}
+          {isLocked ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-emerald-600 hover:bg-emerald-50"
+              onClick={onUnlock}
+              disabled={isProcessing}
+              title="Mở khóa tài khoản"
+            >
+              <Unlock className="size-4" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-amber-600 hover:bg-amber-50"
+              onClick={onLock}
+              disabled={isProcessing}
+              title="Khóa tài khoản"
+            >
+              <Lock className="size-4" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" className="size-8 text-zinc-600" title="Chỉnh sửa" onClick={onEdit}>
             <Edit className="size-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="size-8 text-destructive hover:bg-destructive/10" onClick={onDelete}>
-            <Trash2 className="size-4" />
-          </Button>
-        </div>
+          {/* Xóa hẳn tài khoản – chỉ hiện khi rejected hoặc pending */}
+          {partner.status !== "approved" && (
+            <Button variant="ghost" size="icon" className="size-8 text-destructive hover:bg-destructive/10" title="Xóa tài khoản vĩnh viễn" onClick={onDelete}>
+              <Trash2 className="size-4" />
+            </Button>
+          )}        </div>
       </td>
     </tr>
   );
@@ -306,7 +414,7 @@ function RejectModal({ reason, setReason, onCancel, onConfirm }: any) {
             className="w-full min-h-[100px] p-3 rounded-md border bg-background focus:ring-2 focus:ring-primary/20 outline-none text-sm"
             placeholder="Lý do..."
             value={reason}
-            onChange={e => setReason(e.target.value)}
+            onChange={(e) => setReason(e.target.value)}
           />
         </CardContent>
         <CardFooter className="justify-end gap-3">
@@ -318,9 +426,7 @@ function RejectModal({ reason, setReason, onCancel, onConfirm }: any) {
   );
 }
 
-function SortIcon({ columnKey, sortConfig }: { columnKey: string, sortConfig: { key: string, direction: "asc" | "desc" } | null }) {
+function SortIcon({ columnKey, sortConfig }: { columnKey: string; sortConfig: { key: string; direction: "asc" | "desc" } | null }) {
   if (sortConfig?.key !== columnKey) return null;
   return sortConfig.direction === "asc" ? <ChevronUp size={14} className="text-primary" /> : <ChevronDown size={14} className="text-primary" />;
 }
-
-

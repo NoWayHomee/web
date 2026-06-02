@@ -33,7 +33,16 @@ export type AppNotification = {
   createdAt: string;
 };
 
-export type User = { id: number; email: string; fullName: string; role: string; status: string };
+export type User = {
+  id: number;
+  email: string;
+  fullName: string;
+  role: string;
+  status: string;
+  avatarUrl?: string | null;
+  isSuperAdmin?: boolean;
+  title?: string;
+};
 
 export type Partner = {
   id: number;
@@ -112,6 +121,9 @@ export type Room = {
   platformFeePct: number;
   promotionPct: number;
   status: string;
+  isArchived?: boolean;
+  isBookable?: boolean;
+  archivedLabel?: string | null;
   rejectReason: string | null;
   createdAt: string;
   reviewedAt: string | null;
@@ -127,6 +139,5 @@ export type Room = {
     partnerRevenue: number;
   };
 };
-
 
 

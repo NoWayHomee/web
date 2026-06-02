@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { fetchNotifications, markAsRead, deleteNotification, markReadAll as markReadAllApi } from "../../../../api/notificationsApi";
 import { AppNotification } from "../../../../shared/types";
 import { cn } from "../../../../shared/components/ui";
+import { useConfirmDialog } from "../../../../shared/components/ConfirmDialog";
 
 function formatType(type: string) {
   return type.replace(/_/g, " ");
@@ -26,6 +27,8 @@ let cachedAdminNotificationList: AppNotification[] | null = null;
 export function NotificationsTab({ onNavigate, onRefreshCount }: { onNavigate: (tab: string, filter: string, targetId?: number) => void, onRefreshCount?: () => void }) {
   const [list, setList] = useState<AppNotification[]>(cachedAdminNotificationList || []);
   const [isLoading, setIsLoading] = useState(!cachedAdminNotificationList);
+  const [error, setError] = useState("");
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     load();
@@ -33,12 +36,15 @@ export function NotificationsTab({ onNavigate, onRefreshCount }: { onNavigate: (
 
   async function load() {
     setIsLoading(list.length === 0);
+    setError("");
     try {
       const result = await fetchNotifications();
       const nextList = result.notifications || [];
       cachedAdminNotificationList = nextList;
       setList(nextList);
-    } catch { }
+    } catch (err: any) {
+      setError(err.message || "Không thể tải thông báo.");
+    }
     finally { setIsLoading(false); }
   }
 
@@ -55,17 +61,23 @@ export function NotificationsTab({ onNavigate, onRefreshCount }: { onNavigate: (
       await markAsRead(id);
       updateList((items) => items.map((item) => item.id === id ? { ...item, isRead: true } : item));
       onRefreshCount?.();
-    } catch { }
+    } catch (err: any) { setError(err.message || "Không thể đánh dấu đã đọc."); }
   }
 
   async function remove(id: number, event: React.MouseEvent) {
     event.stopPropagation();
-    if (!confirm("Xóa thông báo này?")) return;
+    const ok = await confirm({
+      title: "Xóa thông báo",
+      message: "Thông báo này sẽ bị xóa khỏi danh sách.",
+      confirmText: "Xóa",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteNotification(id);
       updateList((items) => items.filter((item) => item.id !== id));
       onRefreshCount?.();
-    } catch { }
+    } catch (err: any) { setError(err.message || "Không thể xóa thông báo."); }
   }
 
   async function markReadAll() {
@@ -73,7 +85,7 @@ export function NotificationsTab({ onNavigate, onRefreshCount }: { onNavigate: (
       await markReadAllApi();
       updateList((items) => items.map((item) => ({ ...item, isRead: true })));
       onRefreshCount?.();
-    } catch { }
+    } catch (err: any) { setError(err.message || "Không thể đánh dấu tất cả."); }
   }
 
   function handleClick(n: AppNotification) {
@@ -111,6 +123,12 @@ export function NotificationsTab({ onNavigate, onRefreshCount }: { onNavigate: (
           </button>
         )}
       </div>
+
+      {error && (
+        <div className="rounded-md border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {error}
+        </div>
+      )}
 
       {list.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
@@ -158,6 +176,7 @@ export function NotificationsTab({ onNavigate, onRefreshCount }: { onNavigate: (
           ))}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }
