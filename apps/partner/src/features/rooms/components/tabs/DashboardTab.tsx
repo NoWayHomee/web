@@ -109,7 +109,7 @@ export function DashboardTab() {
     return reports
       .map((hotel) => {
         const bookings = hotel.bookings || [];
-        const activeBookings = bookings.filter((b) => !["cancelled", "pending"].includes(b.status));
+        const activeBookings = bookings.filter((b) => b.status !== "cancelled");
         const completedBookings = activeBookings.filter((b) => b.isCompleted);
         
         const sum = (rows: any[], key: string) => rows.reduce((acc, item) => acc + Number(item[key] || 0), 0);
@@ -167,7 +167,7 @@ export function DashboardTab() {
       const diffDays = diffTime / (1000 * 60 * 60 * 24);
       if (period === "week") return diffDays <= 7;
       if (period === "month") return diffDays <= 30;
-      return diffDays <= 365; // year
+      return true; // year = toàn bộ lịch sử
     });
   }, [allBookings, period, anchorDate]);
 
@@ -178,7 +178,7 @@ export function DashboardTab() {
     const pendingRooms = rooms.filter((r) => r.status !== "approved").length;
     const pendingRequestsCount = rooms.filter((r) => r.pendingRequest).length;
 
-    const activeBookings = filteredBookingsForStats.filter((b) => !["cancelled", "pending"].includes(b.status));
+    const activeBookings = filteredBookingsForStats.filter((b) => b.status !== "cancelled");
     const completedBookings = activeBookings.filter((b) => b.isCompleted);
 
     const totalBookings = activeBookings.length;
@@ -293,11 +293,10 @@ export function DashboardTab() {
     return months;
   }, [allBookings, period, anchorDate]);
 
-  const COLORS = ["#059669", "#3b82f6", "#f59e0b", "#dc2626"];
+  const COLORS = ["#059669", "#3b82f6", "#dc2626"];
   const statusData = [
     { name: "Thành công", value: allBookings.filter(b => b.isCompleted && b.status !== "cancelled").length },
     { name: "Đang lưu trú", value: allBookings.filter(b => b.isCurrentStay).length },
-    { name: "Chờ thanh toán", value: allBookings.filter(b => b.status === "pending").length },
     { name: "Đã hủy", value: allBookings.filter(b => b.status === "cancelled").length },
   ];
   const totalStatus = statusData.reduce((sum, item) => sum + item.value, 0);

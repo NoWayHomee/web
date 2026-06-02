@@ -1,4 +1,13 @@
-export type User = { id: number; email: string; fullName: string; role: string; status: string };
+export type User = {
+  id: number;
+  email: string;
+  fullName: string;
+  role: string;
+  status: string;
+  avatarUrl?: string | null;
+  isSuperAdmin?: boolean;
+  title?: string;
+};
 
 export type Price = {
   id?: number;
@@ -61,6 +70,9 @@ export type Room = {
   platformFeePct: number;
   promotionPct: number;
   status: string;
+  isArchived?: boolean;
+  isBookable?: boolean;
+  archivedLabel?: string | null;
   rejectReason: string | null;
   createdAt: string;
   reviewedAt: string | null;
@@ -80,6 +92,8 @@ export type PartnerNotification = {
   title: string;
   body: string | null;
   type: string;
+  entityType?: string | null;
+  entityId?: number | null;
   createdAt: string;
   isRead: boolean;
 };
@@ -101,4 +115,3 @@ export const CÓMMON_AMENITIES = [
   "Cho phép thú cưng",
   "Cho phép hút thuốc",
 ];
-

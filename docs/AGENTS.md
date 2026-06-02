@@ -1,1 +1,0 @@
-tự thiết kế riêng
